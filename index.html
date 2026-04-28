@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload PDF to FRIDAY</title>
+</head>
+<body>
+
+<h2>Upload PDF to FRIDAY Memory</h2>
+
+<input type="file" id="pdfFile" accept="application/pdf">
+<button onclick="uploadPDF()">Upload PDF</button>
+
+<p id="status"></p>
+
+<script>
+function uploadPDF() {
+
+    const fileInput = document.getElementById("pdfFile")
+    const file = fileInput.files[0]
+
+    if (!file) {
+        alert("Please select a PDF")
+        return
+    }
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    fetch("http://127.0.0.1:5000/upload_pdf", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.text())
+    .then(data => {
+        document.getElementById("status").innerText = data
+    })
+    .catch(err => {
+        document.getElementById("status").innerText = "Upload failed"
+    })
+}
+</script>
+
+</body>
+</html>

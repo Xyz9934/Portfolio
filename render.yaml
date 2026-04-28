@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: friday-api
+    runtime: python
+    plan: starter
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DEPLOY_TARGET
+        value: render
+      - key: RENDER_SERVICE
+        value: "true"
+      - key: CLOUD_SAFE_MODE
+        value: "true"
+      - key: API_ENABLE_PDF_INGEST
+        value: "false"
+      - key: API_ENABLE_LIVE_SEARCH
+        value: "true"
+      - key: PREFER_OFFLINE_BRAIN
+        value: "false"
+      - key: OLLAMA_ENABLED
+        value: "false"
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
