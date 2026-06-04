@@ -3,7 +3,7 @@ import io
 import re
 import webbrowser
 import xml.etree.ElementTree as ET
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 import requests
 
@@ -19,6 +19,7 @@ def can_handle_live_query(question):
             is_news_query(text),
             is_stock_query(text),
             is_google_search_query(text),
+            is_fact_lookup_query(text),
         )
     )
 
@@ -45,6 +46,12 @@ def handle_live_query(question):
         if not search_text:
             return "Tell me what you want me to search on Google."
         return google_search(search_text)
+
+    if is_fact_lookup_query(text):
+        subject = extract_fact_subject(question)
+        if not subject:
+            return "Tell me who or what you want to know about."
+        return get_fact_summary(subject)
 
     return None
 
@@ -74,6 +81,20 @@ def is_google_search_query(text):
         "look up ",
     )
     return any(pattern in text for pattern in patterns)
+
+
+def is_fact_lookup_query(text):
+    patterns = (
+        "who is ",
+        "who was ",
+        "what is ",
+        "what was ",
+        "tell me about ",
+        "tell me who ",
+        "tell me what ",
+        "explain ",
+    )
+    return any(text.startswith(pattern) for pattern in patterns)
 
 
 def extract_weather_location(question):
@@ -144,6 +165,29 @@ def extract_search_query(question):
         match = re.search(pattern, lower)
         if match:
             return match.group(1).strip(" ?.!")
+
+    return ""
+
+
+def extract_fact_subject(question):
+    lower = normalize(question)
+    patterns = [
+        r"who is (.+)$",
+        r"who was (.+)$",
+        r"what is (.+)$",
+        r"what was (.+)$",
+        r"tell me about (.+)$",
+        r"tell me who (.+)$",
+        r"tell me what (.+)$",
+        r"explain (.+)$",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, lower)
+        if match:
+            subject = match.group(1).strip(" ?.!")
+            if subject:
+                return subject
 
     return ""
 
@@ -246,3 +290,43 @@ def google_search(query):
         return f"I couldn't open Google search automatically: {exc}"
 
     return f"Opened Google search for {query}."
+
+
+def get_fact_summary(subject):
+    try:
+        search_response = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": subject,
+                "utf8": 1,
+                "format": "json",
+            },
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+        )
+        search_response.raise_for_status()
+        search_data = search_response.json()
+        search_results = search_data.get("query", {}).get("search", [])
+        if not search_results:
+            return f"I couldn't find a quick summary for {subject}."
+
+        title = search_results[0].get("title", "").strip()
+        if not title:
+            return f"I couldn't find a quick summary for {subject}."
+
+        summary_response = requests.get(
+            f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(title)}",
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+        )
+        summary_response.raise_for_status()
+        summary_data = summary_response.json()
+        extract = (summary_data.get("extract") or "").strip()
+        if not extract:
+            return f"I couldn't find a quick summary for {title}."
+
+        return extract
+    except Exception as exc:
+        return f"I couldn't fetch a quick summary right now: {exc}"

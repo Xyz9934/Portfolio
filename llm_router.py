@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
-from multiprocessing import Process, Queue
 from time import perf_counter
 
 from config import (
@@ -24,8 +23,8 @@ from system_health import record_health_event, should_force_safe_mode
 from ultra_intelligence import parse_json_object
 
 
-MODEL_TIMEOUT_SECONDS = 6
-OLLAMA_TIMEOUT_SECONDS = 18
+MODEL_TIMEOUT_SECONDS = 30
+OLLAMA_TIMEOUT_SECONDS = 60
 
 FRIDAY_PERSONALITY_PROMPT = """
 You are FRIDAY, a smart personal AI assistant inspired by JARVIS.
@@ -358,7 +357,7 @@ def ask_ollama(user_prompt, system_prompt, strategy="quick"):
     started = perf_counter()
     try:
         model_name = select_ollama_model(user_prompt, system_prompt, strategy=strategy)
-        answer = _ask_ollama_in_process(user_prompt, system_prompt, model_name, timeout_seconds=OLLAMA_TIMEOUT_SECONDS)
+        answer = _ask_ollama_direct(user_prompt, system_prompt, model_name, timeout_seconds=OLLAMA_TIMEOUT_SECONDS)
         record_health_event("ollama", latency_ms=int((perf_counter() - started) * 1000), ok=bool(answer), note=strategy)
         return answer
     except Exception:
@@ -456,47 +455,22 @@ def call_with_timeout(func, *args, timeout_seconds=MODEL_TIMEOUT_SECONDS):
         executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _ollama_worker(queue, base_url, model_name, full_prompt, keep_alive, timeout_seconds):
+def _ask_ollama_direct(user_prompt, system_prompt, model_name, timeout_seconds=OLLAMA_TIMEOUT_SECONDS):
     try:
         import requests
 
         response = requests.post(
-            f"{base_url.rstrip('/')}/api/generate",
+            f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate",
             json={
                 "model": model_name,
-                "prompt": full_prompt,
+                "prompt": f"{system_prompt}\n\nUser request:\n{user_prompt}",
                 "stream": False,
-                "keep_alive": keep_alive,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
             },
             timeout=timeout_seconds,
         )
         response.raise_for_status()
         data = response.json()
-        queue.put((data.get("response") or "").strip())
-    except Exception:
-        queue.put("")
-
-
-def _ask_ollama_in_process(user_prompt, system_prompt, model_name, timeout_seconds=OLLAMA_TIMEOUT_SECONDS):
-    queue = Queue(maxsize=1)
-    process = Process(
-        target=_ollama_worker,
-        args=(
-            queue,
-            OLLAMA_BASE_URL,
-            model_name,
-            f"{system_prompt}\n\nUser request:\n{user_prompt}",
-            OLLAMA_KEEP_ALIVE,
-            timeout_seconds,
-        ),
-    )
-    process.start()
-    process.join(timeout_seconds)
-    if process.is_alive():
-        process.terminate()
-        process.join(1)
-        return None
-    try:
-        return queue.get_nowait() or None
+        return (data.get("response") or "").strip() or None
     except Exception:
         return None

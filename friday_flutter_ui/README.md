@@ -21,11 +21,15 @@ This folder contains a runnable Flutter client for the FRIDAY assistant app.
 
 ## Backend URL
 
-The app chooses a sensible local backend URL by platform:
+The app now tries to discover a working local backend automatically:
 
-- Android emulator: `http://10.0.2.2:5000`
-- Web: `http://localhost:5000`
-- Desktop: `http://127.0.0.1:5000`
+- Web: current browser host on port `5000`, then `localhost`, `127.0.0.1`, and the current LAN fallback
+- Android emulator: `http://10.0.2.2:5000`, then the current LAN fallback
+- Desktop: `http://127.0.0.1:5000`, then `localhost`, then the current LAN fallback
+
+Current LAN fallback:
+
+- `http://10.211.16.101:5000`
 
 You can override it with:
 

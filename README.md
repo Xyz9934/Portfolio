@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # FRIDAY
 
 FRIDAY is a personal AI assistant project with:
@@ -154,3 +155,6 @@ To point it at Render later, run with:
 ```powershell
 flutter run --dart-define=FRIDAY_API_BASE_URL=https://your-render-service.onrender.com
 ```
+=======
+# FRIDAY
+>>>>>>> 48b7c3b5ecb72ef340ac286943854c3fadecc7fc

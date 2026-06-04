@@ -134,28 +134,72 @@ class _FridayShellState extends State<FridayShell> {
 class FridayApiClient {
   FridayApiClient({http.Client? httpClient})
       : _httpClient = httpClient ?? http.Client(),
-        baseUrl = _resolveBaseUrl();
+        _baseUrlCandidates = _resolveBaseUrlCandidates(),
+        _selectedBaseUrl = _resolveBaseUrlCandidates().first;
 
   final http.Client _httpClient;
-  final String baseUrl;
+  final List<String> _baseUrlCandidates;
+  String _selectedBaseUrl;
 
-  static String _resolveBaseUrl() {
+  String get baseUrl => _selectedBaseUrl;
+
+  static List<String> _resolveBaseUrlCandidates() {
     const configured = String.fromEnvironment('FRIDAY_API_BASE_URL');
     if (configured.isNotEmpty) {
-      return configured;
+      return [configured];
     }
+
     if (kIsWeb) {
-      return 'http://localhost:5000';
+      final host = Uri.base.host.isEmpty ? 'localhost' : Uri.base.host;
+      return _dedupeUrls([
+        'http://$host:5000',
+        'http://localhost:5000',
+        'http://127.0.0.1:5000',
+        'http://10.211.16.101:5000',
+      ]);
     }
+
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5000';
+      return _dedupeUrls([
+        'http://10.0.2.2:5000',
+        'http://10.211.16.101:5000',
+        'http://127.0.0.1:5000',
+      ]);
     }
-    return 'http://127.0.0.1:5000';
+
+    return _dedupeUrls([
+      'http://127.0.0.1:5000',
+      'http://localhost:5000',
+      'http://10.211.16.101:5000',
+    ]);
+  }
+
+  static List<String> _dedupeUrls(List<String> urls) {
+    return urls.toSet().toList();
+  }
+
+  Future<String> _ensureReachableBaseUrl() async {
+    for (final candidate in _baseUrlCandidates) {
+      try {
+        final response = await _httpClient
+            .get(Uri.parse('$candidate/health'))
+            .timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
+          _selectedBaseUrl = candidate;
+          return _selectedBaseUrl;
+        }
+      } catch (_) {
+        // Try the next local backend candidate.
+      }
+    }
+
+    return _selectedBaseUrl;
   }
 
   Future<String> askQuestion(String question) async {
+    final activeBaseUrl = await _ensureReachableBaseUrl();
     final response = await _httpClient.post(
-      Uri.parse('$baseUrl/ask'),
+      Uri.parse('$activeBaseUrl/ask'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'question': question}),
     );
@@ -171,8 +215,9 @@ class FridayApiClient {
 
   Future<bool> checkHealth() async {
     try {
+      final activeBaseUrl = await _ensureReachableBaseUrl();
       final response = await _httpClient
-          .get(Uri.parse('$baseUrl/health'))
+          .get(Uri.parse('$activeBaseUrl/health'))
           .timeout(const Duration(seconds: 4));
       return response.statusCode == 200;
     } catch (_) {
